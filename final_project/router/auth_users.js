@@ -7,20 +7,20 @@ let users = [];
 
 const isValid = (username)=>{ //returns boolean
 //write code to check is the username is valid
-let validUsername = users.filter((user)=>{
-  return user.username === username
-});
-  if(validUsername.length>0){
-    return true;
-  }else{
-    return false;
-  }
+  let validUsername = users.filter((user)=>{
+    return user.username === username
+  });
+    if(validUsername.length>0){
+      return true;
+    } else{
+      return false;
+    }
 }
 
 const authenticatedUser = (username,password)=>{ //returns boolean
 //write code to check if username and password match the one we have in records.
   let validuser = users.filter((user)=> {
-    return(user.username === username && user.password === password)
+    return(user.username === username && user.password === password);
   });
   if(validuser.length>0){
     return true;
@@ -51,66 +51,155 @@ regd_users.post("/login", (req,res) => {
   } else{
     return res.status(200).json({message: "Invalid Login. Check username and password"});
   }
-  // return res.status(300).json({message: "Yet to be implemented"});
+  
 });
 
 // Add a book review
-regd_users.put("/auth/review/:isbn", (req, res) => {
-  //Write your code here
-  const user = req.session.username;
-  
-  const isbn = parseInt(req.params.isbn);
-  if(!isbn){
-    return res.status(400).json({error: "ISBN parameter is required"});
-  }
-  
-  const review = req.body.review;
-  if (!review) {
-    return res.status(400).json({ error: 'Review parameter is required.' });
-  }
-  
-  //accessing the books database to get the book having the isbn provided in the parameter
-  let book = books[isbn];
-  if (!book) {
-    return res.status(404).json({ error: 'Book not found.' });
-  }
 
-  // Check if the user has already reviewed this book
-  if (book.reviews[username]) {
-    // If the user has already reviewed the book, modify the existing review
-    book.reviews[username] = review;
-    return res.json({ message: 'Review updated successfully.' });
-  } else {
-    // If the user has not reviewed the book, add a new review
-    book.reviews[username] = review;
-    return res.json({ message: 'Review added successfully.' });
+// regd_users.put("/auth/review/:isbn", async (req, res) => {
+//   try {
+//     const user = req.user;
+//     const isbn = req.params.isbn;
+//     const review = req.body.reviews;
+
+//     // Check if review exists in request body
+//     if (!review) {
+//       return res.status(400).json({ error: 'Review is required' });
+//     }
+
+//     const addReview = new Promise((resolve, reject) => {
+//       try {
+//         const bookExists = books[isbn];
+//         if (bookExists) {
+//           books[isbn].reviews[user] = review;
+//           return resolve(true);
+//         } else {
+//           return resolve(false);
+//         }
+//       } catch (error) {
+//         return reject(`Adding book review error: ${error}`);
+//       }
+//     });
+
+//     const book = await addReview;
+//     if (book) {
+//       return res.status(200).json({ message: 'Your review has been added successfully', books });
+//     } else {
+//       return res.status(404).json({ message: 'Book not found' });
+//     }
+//   } catch (error) {
+//     return res.status(500).json({ error: error.message });
+//   }
+// });
+regd_users.put("/auth/review/:isbn", async (req, res) => {
+  try {
+    // const user = req.session.username; // Retrieving username from session
+    // const isbn = req.params.isbn;
+    // const review = req.query.review; // Retrieving review from request query
+
+    const user = req.user;
+    const isbn = req.params.isbn;
+    const review = req.body.reviews;
+
+    // Check if review exists in request query
+    if (!review) {
+      return res.status(400).json({ error: 'Review is required' });
+    }
+
+    const addReview = new Promise((resolve, reject) => {
+      try {
+        const bookExists = books[isbn];
+        if (bookExists) {
+          // Check if the user has already posted a review for this ISBN
+          if (books[isbn].reviews.hasOwnProperty(user)) {
+            // If the same user posts a different review, modify the existing review
+            books[isbn].reviews[user] = review;
+            return resolve('modified');
+          } else {
+            // If another user posts a review on the same ISBN, add it as a different review
+            books[isbn].reviews[user] = review;
+            return resolve('added');
+          }
+        } else {
+          return resolve('notfound');
+        }
+      } catch (error) {
+        return reject(`Adding book review error: ${error}`);
+      }
+    });
+
+    const action = await addReview;
+    if (action === 'modified') {
+      return res.status(200).json({ message: 'Your review has been modified successfully', books });
+    } else if (action === 'added') {
+      return res.status(200).json({ message: 'Your review has been added successfully', message2: `${user}`, books });
+    } else {
+      return res.status(404).json({ message: 'Book not found' });
+    }
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 
-//deleting a book review
-regd_users.delete("/auth/review/:isbn", (req, res) => {
-  const isbn = parseInt(req.params.isbn);
-  const username = req.session.username;
 
-  if (!username) {
-    return res.status(401).json({ error: 'Unauthorized. Please login to delete a review.' });
+//delete reviews
+regd_users.delete("/auth/review/:isbn", async(req, res) => {
+  
+  const user = req.user;
+  const isbn = req.params.isbn
+  const addReview = new Promise((resolve, reject) => {
+      try {
+          //search if review exist or not
+          const searchReview = books[isbn].reviews[user];
+          if (searchReview) {
+              delete books[isbn].reviews[user];
+              return resolve(true)
+          } else {
+              return resolve(false);
+          }
+
+      } catch (error) {
+          return reject(`deleting books reviews error ${error}`);
+
+      }
+  })
+  const book = await addReview;
+  if (book) {
+      return res.status(200).json({ message: 'your review has been deleted' });
+  } else {
+      return res.status(404).json({ message: 'your review was not present there' });
   }
 
-  // Check if the book exists
-  const book = books[isbn];
-  if (!book) {
-    return res.status(404).json({ error: 'Book not found.' });
+});
+
+
+//modify a user review
+regd_users.patch("/auth/review/:isbn", async(req, res) => {
+  
+  const user = req.user;
+  const isbn = req.params.isbn
+  const modifyReview = new Promise((resolve, reject) => {
+      try {
+          const bookExists = books[isbn];
+          if (bookExists && books[isbn].reviews[user]) {
+              books[isbn].reviews[user] = req.body.review;
+              return resolve(true);
+          } else {
+              return resolve(false);
+          }
+
+      } catch (error) {
+          return reject(`modifying  books reviews  error ${error}`);
+
+      }
+  })
+  const book = await modifyReview;
+  if (book) {
+      return res.status(200).json({ message: 'Your review has been modified successfully', books });
+  } else {
+      return res.status(404).json({ message: 'Reviews not found' });
   }
 
-  // Check if the user has reviewed the book
-  if (!book.reviews[username]) {
-    return res.status(404).json({ error: 'Review not found for the given book and user.' });
-  }
-
-  // Filter out the review associated with the current user's session
-  book.reviews = Object.fromEntries(Object.entries(book.reviews).filter(([key, value]) => key !== username));
-
-  return res.json({ message: 'Review deleted successfully.' });
 });
 
 module.exports.authenticated = regd_users;
